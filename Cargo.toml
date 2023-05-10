@@ -1,0 +1,14 @@
+[package]
+name = "case_insensitive_string"
+version = "0.1.0"
+authors = ["Jeff Mendez <jeff@a11ywatch.com>"]
+edition = "2021"
+description = "A case insensitive string struct."
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/a11ywatch/case_insensitive_string"
+keywords = ["case-insensitive", "string"]
+categories = ["config", "data-structures"]
+include = ["src/*", "LICENSE", "README.md"]
+
+[dependencies]
