@@ -14,3 +14,7 @@ fn main() {
     assert_eq!(case_insensitive, CaseInsensitiveString::from("IDK"))
 }
 ```
+
+## Features
+
+Add the `compact` feature flag to enable [compact_str](https://github.com/ParkMyCar/compact_str) usage.

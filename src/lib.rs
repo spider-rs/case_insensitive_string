@@ -3,6 +3,12 @@
 #[repr(transparent)]
 pub struct CaseInsensitiveString(String);
 
+/// case-insensitive string handling
+#[cfg(target_feature = "compact")]
+#[derive(Debug, Clone)]
+#[repr(transparent)]
+pub struct CaseInsensitiveString(compact_str::CompactString);
+
 impl PartialEq for CaseInsensitiveString {
     #[inline]
     fn eq(&self, other: &Self) -> bool {

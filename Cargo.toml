@@ -1,6 +1,6 @@
 [package]
 name = "case_insensitive_string"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Jeff Mendez <jeff@a11ywatch.com>"]
 edition = "2021"
 description = "A case insensitive string struct."
@@ -12,3 +12,7 @@ categories = ["config", "data-structures"]
 include = ["src/*", "LICENSE", "README.md"]
 
 [dependencies]
+compact_str = { version = "0.7.0", optional = true }
+
+[features]
+compact = [ "compact_str" ]
