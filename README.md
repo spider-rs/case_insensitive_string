@@ -17,4 +17,5 @@ fn main() {
 
 ## Features
 
-Add the `compact` feature flag to enable [compact_str](https://github.com/ParkMyCar/compact_str) usage.
+1. `compact` feature flag to enable [compact_str](https://github.com/ParkMyCar/compact_str) usage.
+1. `serde` feature flag to enable [serde](https://github.com/serde-rs/serde) usage.
