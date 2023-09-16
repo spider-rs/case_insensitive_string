@@ -8,13 +8,13 @@ pub mod features;
 
 /// case-insensitive string handling
 #[cfg(not(feature = "compact"))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[repr(transparent)]
 pub struct CaseInsensitiveString(String);
 
 /// case-insensitive string handling
 #[cfg(feature = "compact")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[repr(transparent)]
 pub struct CaseInsensitiveString(compact_str::CompactString);
 
