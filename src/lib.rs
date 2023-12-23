@@ -41,6 +41,14 @@ impl From<&str> for CaseInsensitiveString {
     }
 }
 
+#[cfg(feature = "compact")]
+impl From<compact_str::CompactString> for CaseInsensitiveString {
+    #[inline]
+    fn from(s: compact_str::CompactString) -> Self {
+        CaseInsensitiveString { 0: s.into() }
+    }
+}
+
 impl From<String> for CaseInsensitiveString {
     fn from(s: String) -> Self {
         CaseInsensitiveString { 0: s.into() }
