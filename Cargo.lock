@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "case_insensitive_string"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "compact_str",
  "serde",

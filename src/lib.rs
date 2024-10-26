@@ -70,6 +70,12 @@ impl AsRef<str> for CaseInsensitiveString {
     }
 }
 
+impl core::fmt::Display for CaseInsensitiveString {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl CaseInsensitiveString {
     /// Creates a `CaseInsensitiveString` slice from any byte slice.
     ///
