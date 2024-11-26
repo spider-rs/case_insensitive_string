@@ -6,6 +6,8 @@ pub extern crate compact_str;
 
 pub mod features;
 
+#[cfg(feature = "compact")]
+use compact_str::CompactString;
 /// case-insensitive string handling
 #[cfg(not(feature = "compact"))]
 #[derive(Debug, Clone, Default)]
@@ -16,65 +18,7 @@ pub struct CaseInsensitiveString(String);
 #[cfg(feature = "compact")]
 #[derive(Debug, Clone, Default)]
 #[repr(transparent)]
-pub struct CaseInsensitiveString(compact_str::CompactString);
-
-impl PartialEq for CaseInsensitiveString {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.0.eq_ignore_ascii_case(&other.0)
-    }
-}
-
-impl Eq for CaseInsensitiveString {}
-
-impl std::hash::Hash for CaseInsensitiveString {
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.to_ascii_lowercase().hash(state)
-    }
-}
-
-impl From<&str> for CaseInsensitiveString {
-    #[inline]
-    fn from(s: &str) -> Self {
-        CaseInsensitiveString { 0: s.into() }
-    }
-}
-
-#[cfg(feature = "compact")]
-impl From<compact_str::CompactString> for CaseInsensitiveString {
-    #[inline]
-    fn from(s: compact_str::CompactString) -> Self {
-        CaseInsensitiveString { 0: s.into() }
-    }
-}
-
-impl From<String> for CaseInsensitiveString {
-    fn from(s: String) -> Self {
-        CaseInsensitiveString { 0: s.into() }
-    }
-}
-
-impl From<&[u8]> for CaseInsensitiveString {
-    fn from(s: &[u8]) -> Self {
-        CaseInsensitiveString {
-            0: String::from_utf8_lossy(s).into(),
-        }
-    }
-}
-
-impl AsRef<str> for CaseInsensitiveString {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl core::fmt::Display for CaseInsensitiveString {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+pub struct CaseInsensitiveString(CompactString);
 
 impl CaseInsensitiveString {
     /// Creates a `CaseInsensitiveString` slice from any byte slice.
@@ -112,7 +56,7 @@ impl CaseInsensitiveString {
 
     #[cfg(feature = "compact")]
     #[inline]
-    pub fn inner(&self) -> &compact_str::CompactString {
+    pub fn inner(&self) -> &CompactString {
         &self.0
     }
 
@@ -229,5 +173,152 @@ impl CaseInsensitiveString {
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+impl Eq for CaseInsensitiveString {}
+
+impl std::hash::Hash for CaseInsensitiveString {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.to_ascii_lowercase().hash(state)
+    }
+}
+
+impl From<&str> for CaseInsensitiveString {
+    #[inline]
+    fn from(s: &str) -> Self {
+        CaseInsensitiveString { 0: s.into() }
+    }
+}
+
+#[cfg(feature = "compact")]
+impl From<CompactString> for CaseInsensitiveString {
+    #[inline]
+    fn from(s: CompactString) -> Self {
+        CaseInsensitiveString { 0: s.into() }
+    }
+}
+
+impl From<String> for CaseInsensitiveString {
+    fn from(s: String) -> Self {
+        CaseInsensitiveString { 0: s.into() }
+    }
+}
+
+impl From<&[u8]> for CaseInsensitiveString {
+    fn from(s: &[u8]) -> Self {
+        CaseInsensitiveString {
+            0: String::from_utf8_lossy(s).into(),
+        }
+    }
+}
+
+impl AsRef<str> for CaseInsensitiveString {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl core::fmt::Display for CaseInsensitiveString {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::ops::Deref for CaseInsensitiveString {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &str {
+        &self.0.as_str()
+    }
+}
+
+impl std::borrow::Borrow<str> for CaseInsensitiveString {
+    #[inline]
+    fn borrow(&self) -> &str {
+        &self.0.as_str()
+    }
+}
+
+impl PartialEq for CaseInsensitiveString {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq_ignore_ascii_case(&other.0)
+    }
+}
+
+#[cfg(feature = "compact")]
+impl PartialEq<CaseInsensitiveString> for &CompactString {
+    fn eq(&self, other: &CaseInsensitiveString) -> bool {
+        self.eq_ignore_ascii_case(&other.as_ref())
+    }
+}
+
+impl PartialEq<CaseInsensitiveString> for String {
+    fn eq(&self, other: &CaseInsensitiveString) -> bool {
+        self.eq_ignore_ascii_case(&other.as_ref())
+    }
+}
+
+impl<'a> PartialEq<&'a CaseInsensitiveString> for String {
+    fn eq(&self, other: &&CaseInsensitiveString) -> bool {
+        self.eq_ignore_ascii_case(&other.as_ref())
+    }
+}
+
+impl PartialEq<CaseInsensitiveString> for &String {
+    fn eq(&self, other: &CaseInsensitiveString) -> bool {
+        self.eq_ignore_ascii_case(&other.as_ref())
+    }
+}
+
+impl PartialEq<CaseInsensitiveString> for str {
+    fn eq(&self, other: &CaseInsensitiveString) -> bool {
+        self.eq_ignore_ascii_case(&other.as_ref())
+    }
+}
+
+impl<'a> PartialEq<&'a CaseInsensitiveString> for str {
+    fn eq(&self, other: &&CaseInsensitiveString) -> bool {
+        self.eq_ignore_ascii_case(&other.as_ref())
+    }
+}
+
+impl PartialEq<CaseInsensitiveString> for &str {
+    fn eq(&self, other: &CaseInsensitiveString) -> bool {
+        self.eq_ignore_ascii_case(&other.as_ref())
+    }
+}
+
+impl PartialEq<CaseInsensitiveString> for &&str {
+    fn eq(&self, other: &CaseInsensitiveString) -> bool {
+        self.eq_ignore_ascii_case(&other.as_ref())
+    }
+}
+
+impl<'a> PartialEq<CaseInsensitiveString> for std::borrow::Cow<'a, str> {
+    fn eq(&self, other: &CaseInsensitiveString) -> bool {
+        self.eq_ignore_ascii_case(&other.as_ref())
+    }
+}
+
+impl<'a> PartialEq<CaseInsensitiveString> for &std::borrow::Cow<'a, str> {
+    fn eq(&self, other: &CaseInsensitiveString) -> bool {
+        self.eq_ignore_ascii_case(&other.as_ref())
+    }
+}
+
+impl PartialEq<String> for &CaseInsensitiveString {
+    fn eq(&self, other: &String) -> bool {
+        self.eq_ignore_ascii_case(&other.as_ref())
+    }
+}
+
+impl<'a> PartialEq<std::borrow::Cow<'a, str>> for &CaseInsensitiveString {
+    fn eq(&self, other: &std::borrow::Cow<'a, str>) -> bool {
+        self.eq_ignore_ascii_case(&other.as_ref())
     }
 }
