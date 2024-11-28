@@ -1,6 +1,6 @@
 [package]
 name = "case_insensitive_string"
-version = "0.2.7"
+version = "0.2.9"
 authors = ["Jeff Mendez <jeff@spider.cloud>"]
 edition = "2021"
 description = "A case insensitive string struct."
@@ -16,5 +16,6 @@ compact_str = { version = "0.8", optional = true }
 serde = { version = "1", optional = true, features = ["derive"] }
 
 [features]
+default = []
 compact = ["dep:compact_str"]
 serde = ["dep:serde", "compact_str/serde"]

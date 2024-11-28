@@ -93,6 +93,12 @@ impl CaseInsensitiveString {
         self.0.push_str(s)
     }
 
+    /// Convert the [`CaseInsensitiveString`] into a [`String`].
+    /// ```
+    pub fn into_string(self) -> String {
+        self.0.into()
+    }
+
     /// Removes a [`char`] from this [`CaseInsensitiveString`] at a byte position and returns it.
     ///
     /// This is an *O*(*n*) operation, as it requires copying every element in the
@@ -214,6 +220,27 @@ impl From<&[u8]> for CaseInsensitiveString {
     }
 }
 
+impl From<CaseInsensitiveString> for String {
+    #[inline]
+    fn from(s: CaseInsensitiveString) -> Self {
+        s.into_string()
+    }
+}
+
+impl From<&CaseInsensitiveString> for String {
+    #[inline]
+    fn from(s: &CaseInsensitiveString) -> Self {
+        s.0.to_string()
+    }
+}
+
+impl From<&CaseInsensitiveString> for CaseInsensitiveString {
+    #[inline]
+    fn from(s: &CaseInsensitiveString) -> Self {
+        s.clone()
+    }
+}
+
 impl AsRef<str> for CaseInsensitiveString {
     #[inline]
     fn as_ref(&self) -> &str {
@@ -233,6 +260,13 @@ impl std::ops::Deref for CaseInsensitiveString {
     #[inline]
     fn deref(&self) -> &str {
         &self.0.as_str()
+    }
+}
+
+impl std::ops::DerefMut for CaseInsensitiveString {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut str {
+        self.0.as_mut_str()
     }
 }
 
