@@ -356,3 +356,24 @@ impl<'a> PartialEq<std::borrow::Cow<'a, str>> for &CaseInsensitiveString {
         self.eq_ignore_ascii_case(&other.as_ref())
     }
 }
+
+impl PartialOrd for CaseInsensitiveString {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(&other))
+    }
+}
+
+impl Ord for CaseInsensitiveString {
+    /// # Examples
+    ///
+    /// ```
+    /// # use case_insensitive_string::CaseInsensitiveString;
+    /// assert!(CaseInsensitiveString::from("goodbye") < CaseInsensitiveString::from("hello"));
+    /// assert!(CaseInsensitiveString::from("Goodbye") < CaseInsensitiveString::from("hello"));
+    /// assert!(CaseInsensitiveString::from("goodbye") < CaseInsensitiveString::from("Hello"));
+    /// assert!(CaseInsensitiveString::from("Goodbye") < CaseInsensitiveString::from("Hello"));
+    /// ```
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.to_ascii_lowercase().cmp(&other.0.to_ascii_lowercase())
+    }
+}
