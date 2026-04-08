@@ -39,13 +39,13 @@ impl CaseInsensitiveString {
     /// assert_eq!(a, b);
     /// ```
     #[inline]
-    pub fn new<'a, B: ?Sized + AsRef<[u8]>>(bytes: &'a B) -> CaseInsensitiveString {
+    pub fn new<B: ?Sized + AsRef<[u8]>>(bytes: &B) -> CaseInsensitiveString {
         CaseInsensitiveString::from(bytes.as_ref())
     }
 
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
-        &self.0.as_bytes()
+        self.0.as_bytes()
     }
 
     #[cfg(not(feature = "compact"))]
@@ -187,14 +187,153 @@ impl Eq for CaseInsensitiveString {}
 impl std::hash::Hash for CaseInsensitiveString {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.to_ascii_lowercase().hash(state)
+        // Zero-alloc case-folding: feed lowercased bytes directly into the
+        // hasher without allocating a temporary string.
+        let bytes = self.0.as_bytes();
+
+        // Hash the length first (matches str's Hash contract: length-prefixed).
+        bytes.len().hash(state);
+
+        #[cfg(target_arch = "x86_64")]
+        {
+            hash_case_fold_simd(bytes, state);
+        }
+
+        #[cfg(target_arch = "aarch64")]
+        {
+            hash_case_fold_simd_neon(bytes, state);
+        }
+
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        {
+            hash_case_fold_scalar(bytes, state);
+        }
+    }
+}
+
+/// Scalar fallback: fold ASCII uppercase → lowercase one byte at a time.
+#[inline(always)]
+#[allow(dead_code)]
+fn hash_case_fold_scalar<H: std::hash::Hasher>(bytes: &[u8], state: &mut H) {
+    for &b in bytes {
+        state.write_u8(b.to_ascii_lowercase());
+    }
+}
+
+/// SSE2 path: SIMD case-fold into a stack buffer, then hash in one shot.
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+fn hash_case_fold_simd<H: std::hash::Hasher>(bytes: &[u8], state: &mut H) {
+    use core::arch::x86_64::*;
+
+    let len = bytes.len();
+
+    // Short strings: scalar is cheaper than SIMD setup.
+    if len < 16 {
+        hash_case_fold_scalar(bytes, state);
+        return;
+    }
+
+    // Stack buffer for strings up to 512 bytes; heap fallback for longer.
+    // The single state.write() at the end is critical for hasher throughput.
+    if len <= 512 {
+        let mut buf = [0u8; 512];
+        unsafe { case_fold_simd_x86(bytes, buf.as_mut_ptr(), len) };
+        state.write(&buf[..len]);
+    } else {
+        let mut buf = vec![0u8; len];
+        unsafe { case_fold_simd_x86(bytes, buf.as_mut_ptr(), len) };
+        state.write(&buf);
+    }
+}
+
+/// Raw SSE2 case-fold: lowercase `src[..len]` into `dst`.
+///
+/// # Safety
+/// `dst` must have at least `len` bytes of writable space.
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn case_fold_simd_x86(src: &[u8], dst: *mut u8, len: usize) {
+    use core::arch::x86_64::*;
+
+    let upper_a = _mm_set1_epi8(b'A' as i8);
+    let upper_z = _mm_set1_epi8(b'Z' as i8);
+    let lower_bit = _mm_set1_epi8(0x20);
+    let mut i = 0;
+
+    while i + 16 <= len {
+        let chunk = _mm_loadu_si128(src.as_ptr().add(i) as *const __m128i);
+        let ge_a = _mm_cmpgt_epi8(chunk, _mm_sub_epi8(upper_a, _mm_set1_epi8(1)));
+        let le_z = _mm_cmpgt_epi8(_mm_add_epi8(upper_z, _mm_set1_epi8(1)), chunk);
+        let mask = _mm_and_si128(ge_a, le_z);
+        let lowered = _mm_or_si128(chunk, _mm_and_si128(mask, lower_bit));
+        _mm_storeu_si128(dst.add(i) as *mut __m128i, lowered);
+        i += 16;
+    }
+
+    // Scalar tail.
+    while i < len {
+        *dst.add(i) = src[i].to_ascii_lowercase();
+        i += 1;
+    }
+}
+
+/// NEON path (aarch64): SIMD case-fold into a stack buffer, then hash in one shot.
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+fn hash_case_fold_simd_neon<H: std::hash::Hasher>(bytes: &[u8], state: &mut H) {
+    let len = bytes.len();
+
+    if len < 16 {
+        hash_case_fold_scalar(bytes, state);
+        return;
+    }
+
+    if len <= 512 {
+        let mut buf = [0u8; 512];
+        unsafe { case_fold_simd_neon_inner(bytes, buf.as_mut_ptr(), len) };
+        state.write(&buf[..len]);
+    } else {
+        let mut buf = vec![0u8; len];
+        unsafe { case_fold_simd_neon_inner(bytes, buf.as_mut_ptr(), len) };
+        state.write(&buf);
+    }
+}
+
+/// Raw NEON case-fold: lowercase `src[..len]` into `dst`.
+///
+/// # Safety
+/// `dst` must have at least `len` bytes of writable space.
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+unsafe fn case_fold_simd_neon_inner(src: &[u8], dst: *mut u8, len: usize) {
+    use core::arch::aarch64::*;
+
+    let upper_a = vdupq_n_u8(b'A');
+    let upper_z = vdupq_n_u8(b'Z');
+    let lower_bit = vdupq_n_u8(0x20);
+    let mut i = 0;
+
+    while i + 16 <= len {
+        let chunk = vld1q_u8(src.as_ptr().add(i));
+        let ge_a = vcgeq_u8(chunk, upper_a);
+        let le_z = vcleq_u8(chunk, upper_z);
+        let mask = vandq_u8(ge_a, le_z);
+        let lowered = vorrq_u8(chunk, vandq_u8(mask, lower_bit));
+        vst1q_u8(dst.add(i), lowered);
+        i += 16;
+    }
+
+    while i < len {
+        *dst.add(i) = src[i].to_ascii_lowercase();
+        i += 1;
     }
 }
 
 impl From<&str> for CaseInsensitiveString {
     #[inline]
     fn from(s: &str) -> Self {
-        CaseInsensitiveString { 0: s.into() }
+        CaseInsensitiveString(s.into())
     }
 }
 
@@ -202,21 +341,19 @@ impl From<&str> for CaseInsensitiveString {
 impl From<CompactString> for CaseInsensitiveString {
     #[inline]
     fn from(s: CompactString) -> Self {
-        CaseInsensitiveString { 0: s.into() }
+        CaseInsensitiveString(s)
     }
 }
 
 impl From<String> for CaseInsensitiveString {
     fn from(s: String) -> Self {
-        CaseInsensitiveString { 0: s.into() }
+        CaseInsensitiveString(s.into())
     }
 }
 
 impl From<&[u8]> for CaseInsensitiveString {
     fn from(s: &[u8]) -> Self {
-        CaseInsensitiveString {
-            0: String::from_utf8_lossy(s).into(),
-        }
+        CaseInsensitiveString(String::from_utf8_lossy(s).into())
     }
 }
 
@@ -259,7 +396,7 @@ impl std::ops::Deref for CaseInsensitiveString {
 
     #[inline]
     fn deref(&self) -> &str {
-        &self.0.as_str()
+        self.0.as_str()
     }
 }
 
@@ -273,7 +410,7 @@ impl std::ops::DerefMut for CaseInsensitiveString {
 impl std::borrow::Borrow<str> for CaseInsensitiveString {
     #[inline]
     fn borrow(&self) -> &str {
-        &self.0.as_str()
+        self.0.as_str()
     }
 }
 
@@ -287,83 +424,85 @@ impl PartialEq for CaseInsensitiveString {
 #[cfg(feature = "compact")]
 impl PartialEq<CaseInsensitiveString> for &CompactString {
     fn eq(&self, other: &CaseInsensitiveString) -> bool {
-        self.eq_ignore_ascii_case(&other.as_ref())
+        self.eq_ignore_ascii_case(other.as_ref())
     }
 }
 
 impl PartialEq<CaseInsensitiveString> for String {
     fn eq(&self, other: &CaseInsensitiveString) -> bool {
-        self.eq_ignore_ascii_case(&other.as_ref())
+        self.eq_ignore_ascii_case(other.as_ref())
     }
 }
 
-impl<'a> PartialEq<&'a CaseInsensitiveString> for String {
+impl PartialEq<&CaseInsensitiveString> for String {
     fn eq(&self, other: &&CaseInsensitiveString) -> bool {
-        self.eq_ignore_ascii_case(&other.as_ref())
+        self.eq_ignore_ascii_case(other.as_ref())
     }
 }
 
 impl PartialEq<CaseInsensitiveString> for &String {
     fn eq(&self, other: &CaseInsensitiveString) -> bool {
-        self.eq_ignore_ascii_case(&other.as_ref())
+        self.eq_ignore_ascii_case(other.as_ref())
     }
 }
 
 impl PartialEq<CaseInsensitiveString> for str {
     fn eq(&self, other: &CaseInsensitiveString) -> bool {
-        self.eq_ignore_ascii_case(&other.as_ref())
+        self.eq_ignore_ascii_case(other.as_ref())
     }
 }
 
-impl<'a> PartialEq<&'a CaseInsensitiveString> for str {
+impl PartialEq<&CaseInsensitiveString> for str {
     fn eq(&self, other: &&CaseInsensitiveString) -> bool {
-        self.eq_ignore_ascii_case(&other.as_ref())
+        self.eq_ignore_ascii_case(other.as_ref())
     }
 }
 
 impl PartialEq<CaseInsensitiveString> for &str {
     fn eq(&self, other: &CaseInsensitiveString) -> bool {
-        self.eq_ignore_ascii_case(&other.as_ref())
+        self.eq_ignore_ascii_case(other.as_ref())
     }
 }
 
 impl PartialEq<CaseInsensitiveString> for &&str {
     fn eq(&self, other: &CaseInsensitiveString) -> bool {
-        self.eq_ignore_ascii_case(&other.as_ref())
+        self.eq_ignore_ascii_case(other.as_ref())
     }
 }
 
 impl<'a> PartialEq<CaseInsensitiveString> for std::borrow::Cow<'a, str> {
     fn eq(&self, other: &CaseInsensitiveString) -> bool {
-        self.eq_ignore_ascii_case(&other.as_ref())
+        self.eq_ignore_ascii_case(other.as_ref())
     }
 }
 
 impl<'a> PartialEq<CaseInsensitiveString> for &std::borrow::Cow<'a, str> {
     fn eq(&self, other: &CaseInsensitiveString) -> bool {
-        self.eq_ignore_ascii_case(&other.as_ref())
+        self.eq_ignore_ascii_case(other.as_ref())
     }
 }
 
 impl PartialEq<String> for &CaseInsensitiveString {
     fn eq(&self, other: &String) -> bool {
-        self.eq_ignore_ascii_case(&other.as_ref())
+        self.eq_ignore_ascii_case(other.as_ref())
     }
 }
 
 impl<'a> PartialEq<std::borrow::Cow<'a, str>> for &CaseInsensitiveString {
     fn eq(&self, other: &std::borrow::Cow<'a, str>) -> bool {
-        self.eq_ignore_ascii_case(&other.as_ref())
+        self.eq_ignore_ascii_case(other.as_ref())
     }
 }
 
 impl PartialOrd for CaseInsensitiveString {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for CaseInsensitiveString {
+    /// Zero-alloc case-insensitive ordering.
+    ///
     /// # Examples
     ///
     /// ```
@@ -374,6 +513,19 @@ impl Ord for CaseInsensitiveString {
     /// assert!(CaseInsensitiveString::from("Goodbye") < CaseInsensitiveString::from("Hello"));
     /// ```
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.to_ascii_lowercase().cmp(&other.0.to_ascii_lowercase())
+        let a = self.0.as_bytes();
+        let b = other.0.as_bytes();
+        let min_len = a.len().min(b.len());
+
+        for i in 0..min_len {
+            let ca = a[i].to_ascii_lowercase();
+            let cb = b[i].to_ascii_lowercase();
+            match ca.cmp(&cb) {
+                std::cmp::Ordering::Equal => continue,
+                ord => return ord,
+            }
+        }
+
+        a.len().cmp(&b.len())
     }
 }
